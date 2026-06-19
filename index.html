@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+    <title>Biology AR Quest - Biotech Interactive Game by pannawat , 2026</title>
+    <!-- Tailwind CSS v4 via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- MediaPipe Hands CDN Dependecies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Sarabun:wght@300;400;600;700&display=swap');
+
+        body {
+            font-family: 'Sarabun', 'Orbitron', sans-serif;
+            background-color: #030712;
+            overflow: hidden;
+        }
+
+        .cyber-font {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* Custom neon glowing elements */
+        .neon-glow-emerald {
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+            text-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        }
+        
+        .neon-glow-cyan {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.6);
+            text-shadow: 0 0 8px rgba(6, 182, 212, 0.6);
+        }
+
+        .neon-border-emerald {
+            border-color: rgba(16, 185, 129, 0.8);
+            box-shadow: inset 0 0 10px rgba(16, 185, 129, 0.3), 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+
+        /* Scanning grid overlay animation */
+        .grid-overlay {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(16, 185, 129, 0.05) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+        }
+
+        /* Custom scrollbar for translucent elements */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(16, 185, 129, 0.5);
+            border-radius: 3px;
+        }
+
+        /* Glassmorphism custom standard utility */
+        .cyber-glass {
+            background: rgba(10, 15, 30, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+    </style>
+</head>
+<body class="h-full text-slate-100 select-none relative">
+
+    <!-- Raw Live Camera Canvas (Backdrop Level) -->
+    <div class="absolute inset-0 z-0 overflow-hidden">
+        <video id="webcam" class="hidden" autoplay playsinline></video>
+        <canvas id="camera-canvas" class="w-full h-full object-cover scale-x-[-1]"></canvas>
+        <div class="absolute inset-0 grid-overlay pointer-events-none"></div>
+        <div class="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/40 to-gray-950 pointer-events-none"></div>
+    </div>
+
+    <!-- Interactive Custom Cursor overlay representing physical tracked indicator -->
+    <div id="dwell-cursor" class="fixed top-0 left-0 w-10 h-10 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 opacity-0 transition-opacity duration-200">
+        <!-- SVG Ring that serves as indicator -->
+        <svg class="w-full h-full transform -rotate-90">
+            <circle cx="20" cy="20" r="16" stroke="rgba(16, 185, 129, 0.3)" stroke-width="4" fill="transparent" />
+            <circle id="dwell-progress-ring" cx="20" cy="20" r="16" stroke="#10b981" stroke-width="4" fill="transparent" 
+                    stroke-dasharray="100.53" stroke-dashoffset="100.53" stroke-linecap="round"/>
+        </svg>
+        <div class="absolute inset-2 bg-cyan-400 rounded-full animate-pulse opacity-85 shadow-[0_0_8px_#06b6d4]"></div>
+    </div>
+
+    <!-- UI Outer Layout Frame -->
+    <div class="absolute inset-0 z-10 flex flex-col justify-between p-4 md:p-6 pointer-events-none">
+        
+        <!-- TOP STATUS HEADER BAR -->
+        <header class="w-full flex justify-between items-center pointer-events-auto">
+            <div class="cyber-glass px-4 py-2 rounded-xl flex items-center space-x-3 shadow-lg">
+                <div class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>
+                <div class="cyber-font font-bold text-sm tracking-wider text-emerald-400">BIOLOGY AR QUEST v2.0</div>
+            </div>
+
+            <!-- Global Controls Frame -->
+            <div class="flex items-center space-x-3">
+                <button id="toggle-skeleton-btn" class="cyber-glass hover:bg-emerald-500/20 text-emerald-400 font-medium px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all duration-300">
+                    <i class="fa-solid fa-network-wired"></i>
+                    <span>SKELETON: ON</span>
+                </button>
+                <div id="ai-status-badge" class="cyber-glass px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <i id="ai-status-icon" class="fa-solid fa-circle-notch animate-spin text-cyan-400"></i>
+                    <span id="ai-status-text" class="text-slate-300">SYSTEM OFFLINE</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN INTERACTION AREA (RENDERER CONTAINERS) -->
+        <main class="flex-1 my-6 flex justify-center items-center pointer-events-auto w-full max-w-5xl mx-auto relative">
+            
+            <!-- STATE 1: HOME SCREEN -->
+            <section id="screen-home" class="w-full max-w-xl cyber-glass rounded-3xl p-8 text-center neon-border-emerald transform scale-100 transition-all duration-300">
+                <div class="mb-6 flex justify-center">
+                    <div class="w-24 h-24 rounded-full bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center animate-pulse shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+                        <i class="fa-solid fa-microscope text-5xl text-emerald-400"></i>
+                    </div>
+                </div>
+                
+                <h1 class="text-3xl md:text-4xl font-extrabold tracking-tight mb-2 cyber-font text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+                    BIOLOGY AR QUEST
+                </h1>
+                <p class="text-slate-400 text-sm md:text-base mb-8 max-w-md mx-auto">
+                    ขอต้อนรับสู่แล็บชีววิทยาจำลองแห่งอนาคต ทดสอบความรู้ของคุณและตอบคำถามด้วยการเคลื่อนไหวของนิ้วผ่านเทคโนโลยีตรวจจับมือ AI ขั้นสูง
+                </p>
+
+                <!-- Instruction Steps -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left mb-8">
+                    <div class="p-3 rounded-xl bg-slate-950/50 border border-slate-800 flex items-start space-x-3">
+                        <div class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0 mt-1">1</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-200">อนุญาตการเข้าถึงกล้อง</h3>
+                            <p class="text-[10px] text-slate-400">ระบบจำเป็นต้องใช้เว็บแคมเพื่อจับพิกัดนิ้วชี้ของคุณ</p>
+                        </div>
+                    </div>
+                    <div class="p-3 rounded-xl bg-slate-950/50 border border-slate-800 flex items-start space-x-3">
+                        <div class="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs shrink-0 mt-1">2</div>
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-200">ค้างนิ้วเพื่อกดปุ่ม (Dwell)</h3>
+                            <p class="text-[10px] text-slate-400">ยกนิ้วชี้ขึ้นมาทับปุ่มคำตอบ ค้างไว้ 1 วินาทีเพื่อเลือกคำตอบ</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Start Buttons & Fallback indicator -->
+                <div class="space-y-4">
+                    <button id="start-game-btn" disabled class="w-full py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black tracking-widest text-lg rounded-2xl cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg neon-glow-emerald">
+                        <i class="fa-solid fa-dna mr-2 animate-bounce"></i> กรุณารอเชื่อมต่อกล้องและ AI...
+                    </button>
+                    <div class="text-[11px] text-slate-500">
+                        *หากไม่มีกล้องหรือโมเดลไม่ทำงาน คุณยังคงสามารถใช้เมาส์หรือนิ้วสัมผัสที่หน้าจอเพื่อเล่นได้ปกติ
+                    </div>
+                </div>
+            </section>
+
+            <!-- STATE 2: COUNTDOWN SCREEN -->
+            <section id="screen-countdown" class="hidden flex-col items-center justify-center text-center">
+                <div class="relative w-48 h-48 flex items-center justify-center">
+                    <!-- Spinning glowing countdown ring -->
+                    <div class="absolute inset-0 rounded-full border-4 border-emerald-500/10 border-t-emerald-400 animate-spin"></div>
+                    <div id="countdown-number" class="cyber-font font-black text-8xl text-emerald-400 neon-glow-emerald animate-pulse">3</div>
+                </div>
+                <p class="mt-8 text-sm uppercase tracking-widest text-cyan-400 cyber-font">Prepare Yourself...</p>
+            </section>
+
+            <!-- STATE 3: PLAY SCREEN (INTERACTIVE QUIZ) -->
+            <section id="screen-play" class="hidden w-full flex-col space-y-4">
+                
+                <!-- Info Header panel -->
+                <div class="flex justify-between items-center w-full cyber-glass px-5 py-3 rounded-2xl">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-slate-400 text-xs">ข้อที่:</span>
+                        <span id="question-index-badge" class="cyber-font text-emerald-400 font-bold">1 / 5</span>
+                    </div>
+                    <!-- 10s Visual Progress Timer -->
+                    <div class="flex-1 mx-8 relative h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                        <div id="play-timer-bar" class="absolute left-0 top-0 h-full w-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-100 ease-linear shadow-[0_0_10px_#10b981]"></div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-slate-400 text-xs">คะแนนสะสม:</span>
+                        <span id="score-badge" class="cyber-font text-cyan-400 font-bold neon-glow-cyan">0000</span>
+                    </div>
+                </div>
+
+                <!-- Main Question Display Card -->
+                <div class="cyber-glass rounded-3xl p-6 md:p-8 border-l-4 border-l-emerald-500 shadow-xl relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                    <div class="flex items-center space-x-3 mb-4">
+                        <span id="question-topic-tag" class="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs font-semibold rounded-full border border-emerald-500/20">CELL BIOLOGY</span>
+                        <span id="timer-text-digits" class="cyber-font text-xs text-rose-400 font-mono font-bold">⏱️ 10.0s</span>
+                    </div>
+                    <h2 id="question-text" class="text-lg md:text-xl font-bold leading-relaxed text-slate-100">
+                        <!-- Question Text Inserted Dynamically -->
+                    </h2>
+                </div>
+
+                <!-- Answers Grid (4 Choices) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                    <button data-index="0" class="quiz-option-btn cyber-glass hover:bg-emerald-500/10 active:scale-[0.98] border border-slate-700/80 hover:border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 font-mono font-bold text-emerald-400 flex items-center justify-center shadow-inner">A</div>
+                        <span class="option-text text-sm md:text-base font-semibold text-slate-200"></span>
+                    </button>
+                    <button data-index="1" class="quiz-option-btn cyber-glass hover:bg-emerald-500/10 active:scale-[0.98] border border-slate-700/80 hover:border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 font-mono font-bold text-emerald-400 flex items-center justify-center shadow-inner">B</div>
+                        <span class="option-text text-sm md:text-base font-semibold text-slate-200"></span>
+                    </button>
+                    <button data-index="2" class="quiz-option-btn cyber-glass hover:bg-emerald-500/10 active:scale-[0.98] border border-slate-700/80 hover:border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 font-mono font-bold text-emerald-400 flex items-center justify-center shadow-inner">C</div>
+                        <span class="option-text text-sm md:text-base font-semibold text-slate-200"></span>
+                    </button>
+                    <button data-index="3" class="quiz-option-btn cyber-glass hover:bg-emerald-500/10 active:scale-[0.98] border border-slate-700/80 hover:border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200">
+                        <div class="w-10 h-10 rounded-xl bg-slate-900 border border-slate-700 font-mono font-bold text-emerald-400 flex items-center justify-center shadow-inner">D</div>
+                        <span class="option-text text-sm md:text-base font-semibold text-slate-200"></span>
+                    </button>
+                </div>
+
+                <!-- Footer Interaction Tips -->
+                <div class="text-center py-2">
+                    <p class="text-xs text-slate-400">
+                        💡 <span class="text-emerald-400 font-semibold">Tip:</span> ชี้ปลายนิ้วค้างไว้บนปุ่มที่ถูกต้องเพื่อทำการกดยืนยัน หรือคลิกหน้าจอได้ทันที
+                    </p>
+                </div>
+            </section>
+
+            <!-- STATE 4: RESULT SCREEN -->
+            <section id="screen-result" class="hidden w-full max-w-xl cyber-glass rounded-3xl p-8 text-center neon-border-emerald">
+                
+                <h1 class="text-2xl font-black tracking-widest text-emerald-400 mb-6 cyber-font uppercase">Mission Accomplished</h1>
+                
+                <!-- Performance Grade & Score -->
+                <div class="relative w-40 h-40 mx-auto mb-6 flex items-center justify-center">
+                    <!-- Spinning circles -->
+                    <div class="absolute inset-0 rounded-full border-4 border-dashed border-emerald-500/20 animate-spin"></div>
+                    <div class="absolute inset-2 rounded-full border border-cyan-400/30"></div>
+                    <div class="text-center z-10">
+                        <span id="result-grade" class="cyber-font font-black text-7xl text-emerald-400 block neon-glow-emerald">S</span>
+                        <span class="text-xs tracking-wider text-slate-400 uppercase">Class Tier</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-8">
+                    <div class="bg-slate-950/60 border border-slate-800 p-4 rounded-2xl">
+                        <span class="text-xs text-slate-400 block mb-1">คะแนนรวมทั้งหมด</span>
+                        <span id="result-score" class="cyber-font text-2xl font-bold text-cyan-400">1,240</span>
+                    </div>
+                    <div class="bg-slate-950/60 border border-slate-800 p-4 rounded-2xl">
+                        <span class="text-xs text-slate-400 block mb-1">ตอบถูกทั้งหมด</span>
+                        <span id="result-accuracy" class="cyber-font text-2xl font-bold text-emerald-400">5 / 5 ข้อ</span>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button id="restart-game-btn" class="w-full py-4 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black tracking-widest text-md rounded-2xl cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg">
+                    <i class="fa-solid fa-arrows-rotate mr-2"></i> เล่นใหม่อีกครั้ง
+                </button>
+            </section>
+
+        </main>
+
+        <!-- FOOTER STATUS BRANDING -->
+        <footer class="w-full flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-widest border-t border-slate-900 pt-3">
+            <div>BIOTECHNOLOGY DEPARTMENT CO.</div>
+            <div id="fps-display" class="cyber-font text-emerald-400 font-bold">FPS: 0</div>
+        </footer>
+
+    </div>
+
+    <!-- Feedback Message Overlay (Triggered upon right / wrong answers) -->
+    <div id="feedback-overlay" class="fixed inset-0 flex items-center justify-center bg-black/60 z-30 opacity-0 pointer-events-none transition-opacity duration-200">
+        <div id="feedback-card" class="cyber-glass rounded-3xl p-8 max-w-sm text-center transform scale-75 transition-transform duration-200">
+            <div id="feedback-icon-container" class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border shadow-lg">
+                <i id="feedback-icon" class="fa-solid text-4xl"></i>
+            </div>
+            <h2 id="feedback-title" class="text-2xl font-black mb-2 tracking-wide">CORRECT</h2>
+            <p id="feedback-detail" class="text-sm text-slate-300">ได้รับคะแนนความเร็วเพิ่มขึ้น +120 คะแนน</p>
+        </div>
+    </div>
+
+    <!-- AUDIO MANAGEMENT SCRIPT (Standard Web Audio API) -->
+    <script>
+        const AudioEngine = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            tick() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.frequency.setValueAtTime(1000, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.05);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.05);
+            },
+            correct() {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Double chime arpeggio
+                this.playTone(523.25, 0.1, 0.08); // C5
+                setTimeout(() => {
+                    this.playTone(659.25, 0.15, 0.08); // E5
+                }, 100);
+            },
+            wrong() {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(80, this.ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.3);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.3);
+            },
+            victory() {
+                if (!this.ctx) return;
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C Major Triad
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => {
+                        this.playTone(freq, 0.3, 0.06);
+                    }, idx * 150);
+                });
+            },
+            playTone(frequency, duration, volume) {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.frequency.setValueAtTime(frequency, this.ctx.currentTime);
+                gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            }
+        };
+    </script>
+
+    <!-- MAIN GAME LOGIC & SYSTEM MODULES -->
+    <script>
+        // High-Quality Question Bank (Thai Biology Language)
+        const QUESTION_POOL = [
+            {
+                topic: "CELL BIOLOGY",
+                text: "โครงสร้างใดของเซลล์ทำหน้าที่เปรียบเสมือน 'โรงงานผลิตพลังงาน' เพื่อสร้างพลังงาน ATP ให้กับเซลล์?",
+                options: ["ไมโทคอนเดรีย (Mitochondria)", "ไรโบโซม (Ribosome)", "กอลจิบอดี (Golgi Body)", "ไลโซโซม (Lysosome)"],
+                correct: 0
+            },
+            {
+                topic: "HUMAN ANATOMY",
+                text: "อวัยวะใดในระบบหมุนเวียนเลือดทำหน้าที่ฟอกเลือดเสียที่มีคาร์บอนไดออกไซด์สูงให้เป็นเลือดดีที่มีออกซิเจนสูง?",
+                options: ["หัวใจ (Heart)", "ตับ (Liver)", "ปอด (Lung)", "ไต (Kidney)"],
+                correct: 2
+            },
+            {
+                topic: "GENETICS",
+                text: "ในสายคู่เกลียวสลับของ DNA (Deoxyribonucleic Acid) ข้อใดคือการจับคู่คู่เบสได้อย่างถูกต้องเสถียร?",
+                options: ["A จับคู่กับ C, T จับคู่กับ G", "A จับคู่กับ T, C จับคู่กับ G", "A จับคู่กับ G, T จับคู่กับ C", "A จับคู่กับ U, C จับคู่กับ G"],
+                correct: 1
+            },
+            {
+                topic: "ECOLOGY",
+                text: "สิ่งมีชีวิตในข้อใดมีบทบาทฐานะทางนิเวศวิทยาเป็น 'ผู้ผลิต' (Producer) หลักในห่วงโซ่อาหารป่าบก?",
+                options: ["ราและแบคทีเรีย", "หญ้าและพืชสีเขียว", "นกกินหนอน", "ตั๊กแตนใบไม้"],
+                correct: 1
+            },
+            {
+                topic: "PLANT PHYSIOLOGY",
+                text: "กระบวนการตรึงคาร์บอนและสังเคราะห์ด้วยแสง (Photosynthesis) ของพืชเกิดขึ้นที่บริเวณออร์แกเนลล์สำคัญชนิดใด?",
+                options: ["นิวเคลียส (Nucleus)", "คลอโรพลาสต์ (Chloroplast)", "แวคิวโอล (Vacuole)", "ไซโตพลาซึม (Cytoplasm)"],
+                correct: 1
+            },
+            {
+                topic: "HUMAN ANATOMY",
+                text: "ห้องหัวใจห้องใดที่มีผนังหนาที่สุด เนื่องจากต้องสูบฉีดเลือดแดงไปยังส่วนต่างๆ ทั่วร่างกาย?",
+                options: ["หัวใจห้องบนขวา (Right Atrium)", "หัวใจห้องล่างขวา (Right Ventricle)", "หัวใจห้องบนซ้าย (Left Atrium)", "หัวใจห้องล่างซ้าย (Left Ventricle)"],
+                correct: 3
+            },
+            {
+                topic: "CELL BIOLOGY",
+                text: "เซลล์เม็ดเลือดแดง (Red Blood Cell) ของมนุษย์ที่เติบโตเต็มที่แล้ว จะสูญเสียโครงสร้างส่วนใดไปเพื่อเพิ่มพื้นที่ในการลำเลียงออกซิเจน?",
+                options: ["นิวเคลียส (Nucleus)", "ไซโทพลาซึม (Cytoplasm)", "เยื่อหุ้มเซลล์ (Cell Membrane)", "เอนไซม์ทำงาน"],
+                correct: 0
+            },
+            {
+                topic: "GENETICS",
+                text: "ลักษณะฟีโนไทป์ทางพันธุกรรมชนิดใดในมนุษย์ ที่จัดเป็นความแปรผันแบบไม่ต่อเนื่อง (Discontinuous Variation)?",
+                options: ["ส่วนสูง (Height)", "หมู่โลหิตระบบ ABO", "สีผิว (Skin Color)", "สติปัญญา (IQ)"],
+                correct: 1
+            },
+            {
+                topic: "ECOLOGY",
+                text: "ความสัมพันธ์ระหว่าง 'ไลเคน (Lichens)' (สาหร่ายกับรา) จัดเป็นความสัมพันธ์ระหว่างสิ่งมีชีวิตในรูปแบบใด?",
+                options: ["ภาวะพึ่งพากัน (Mutualism)", "ภาวะได้ประโยชน์ร่วมกัน (Protocooperation)", "ภาวะอิงอาศัย (Commensalism)", "ภาวะปรสิต (Parasitism)"],
+                correct: 0
+            },
+            {
+                topic: "PLANT PHYSIOLOGY",
+                text: "ฮอร์โมนพืช (Phytohormone) ชนิดใดมีบทบาทโดดเด่นและสำคัญที่สุดในการกระตุ้นการสุกของผลไม้?",
+                options: ["ออกซิน (Auxin)", "ไซโทไคนิน (Cytokinin)", "เอทิลีน (Ethylene)", "จิบเบอเรลลิน (Gibberellin)"],
+                correct: 2
+            },
+            {
+                topic: "HUMAN ANATOMY",
+                text: "เอนไซม์อะไมเลส (Amylase) ที่หลั่งอยู่ในน้ำลายภายในช่องปากทำหน้าที่เริ่มต้นย่อยอาหารประเภทใดเป็นอันดับแรก?",
+                options: ["โปรตีน (Protein)", "ไขมัน (Lipid)", "คาร์โบไฮเดรต/แป้ง (Carbohydrate)", "วิตามินและแร่ธาตุ"],
+                correct: 2
+            },
+            {
+                topic: "CELL BIOLOGY",
+                text: "ข้อใดคือส่วนประกอบโครงสร้างระดับเซลล์ที่พบได้เฉพาะในเซลล์พืช แต่ไม่พบในเซลล์สัตว์ทั่วไป?",
+                options: ["นิวเคลียสและไรโบโซม", "ผนังเซลล์และคลอโรพลาสต์", "เยื่อหุ้มเซลล์และไซโตพลาซึม", "ไมโทคอนเดรียและกอลจิบอดี"],
+                correct: 1
+            },
+            {
+                topic: "GENETICS",
+                text: "ใครได้รับการยกย่องเป็นดั่งบิดาแห่งวิชาพันธุศาสตร์สมัยใหม่ (Father of Genetics) จากการทดลองผสมพันธุ์ถั่วลันเตา?",
+                options: ["ชาร์ลส์ ดาร์วิน (Charles Darwin)", "เกรเกอร์ เมนเดล (Gregor Mendel)", "หลุยส์ ปาสเตอร์ (Louis Pasteur)", "อเล็กซานเดอร์ เฟลมมิ่ง (Alexander Fleming)"],
+                correct: 1
+            },
+            {
+                topic: "ECOLOGY",
+                text: "ปรากฏการณ์ ยูโทรฟิเคชัน (Eutrophication) จนน้ำเน่าเสีย มักเกิดขึ้นเมื่อแหล่งน้ำมีแร่ธาตุประเภทใดสะสมปนเปื้อนมากเกินไป?",
+                options: ["ไนโตรเจนและฟอสฟอรัส", "โพแทสเซียมและแมกนีเซียม", "แคลเซียมและโซเดียม", "เหล็กและซัลเฟอร์"],
+                correct: 0
+            },
+            {
+                topic: "HUMAN ANATOMY",
+                text: "ในระบบทางเดินอาหารของมนุษย์ อวัยวะใดทำหน้าที่หลักในการดูดซึมสารอาหารที่ผ่านการย่อยเกือบทุกชนิดเข้าสู่กระแสเลือด?",
+                options: ["ปาก (Oral Cavity)", "กระเพาะอาหาร (Stomach)", "ลำไส้เล็ก (Small Intestine)", "ลำไส้ใหญ่ (Large Intestine)"],
+                correct: 2
+            }
+        ];
+
+        // Centralized State Engine Management
+        const GameState = {
+            currentScreen: 'home', // 'home', 'countdown', 'play', 'result'
+            score: 0,
+            sessionQuestions: [],
+            currentQuestionIdx: 0,
+            selectedOptionIdx: null,
+            correctCount: 0,
+            timer: 10.0,
+            timerInterval: null,
+            timerActive: false,
+            skeletonVisible: true,
+            
+            // Interaction Cursor Tracking
+            handDetected: false,
+            rawPointerX: 0,
+            rawPointerY: 0,
+            smoothedPointerX: 0,
+            smoothedPointerY: 0,
+            alpha: 0.2, // Smoothing coefficient
+
+            // Dwell Selection State
+            hoveredElement: null,
+            dwellStartTime: null,
+            dwellDuration: 1000, // 1000ms (1 second) to register selection
+            dwellActive: false
+        };
+
+        // DOM Element Definitions
+        const screens = {
+            home: document.getElementById('screen-home'),
+            countdown: document.getElementById('screen-countdown'),
+            play: document.getElementById('screen-play'),
+            result: document.getElementById('screen-result')
+        };
+
+        const elements = {
+            webcam: document.getElementById('webcam'),
+            canvas: document.getElementById('camera-canvas'),
+            aiStatusIcon: document.getElementById('ai-status-icon'),
+            aiStatusText: document.getElementById('ai-status-text'),
+            startButton: document.getElementById('start-game-btn'),
+            toggleSkeletonBtn: document.getElementById('toggle-skeleton-btn'),
+            fpsDisplay: document.getElementById('fps-display'),
+            countdownNumber: document.getElementById('countdown-number'),
+            questionIndexBadge: document.getElementById('question-index-badge'),
+            scoreBadge: document.getElementById('score-badge'),
+            questionTopicTag: document.getElementById('question-topic-tag'),
+            questionText: document.getElementById('question-text'),
+            timerTextDigits: document.getElementById('timer-text-digits'),
+            timerBar: document.getElementById('play-timer-bar'),
+            optionButtons: document.querySelectorAll('.quiz-option-btn'),
+            resultGrade: document.getElementById('result-grade'),
+            resultScore: document.getElementById('result-score'),
+            resultAccuracy: document.getElementById('result-accuracy'),
+            restartButton: document.getElementById('restart-game-btn'),
+            dwellCursor: document.getElementById('dwell-cursor'),
+            dwellProgressRing: document.getElementById('dwell-progress-ring'),
+            feedbackOverlay: document.getElementById('feedback-overlay'),
+            feedbackCard: document.getElementById('feedback-card'),
+            feedbackIconContainer: document.getElementById('feedback-icon-container'),
+            feedbackIcon: document.getElementById('feedback-icon'),
+            feedbackTitle: document.getElementById('feedback-title'),
+            feedbackDetail: document.getElementById('feedback-detail')
+        };
+
+        const ctx = elements.canvas.getContext('2d');
+        let camera = null;
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+
+        // Custom Particle Physics for Confetti on Success Screen
+        let confettiParticles = [];
+        function createConfetti() {
+            confettiParticles = [];
+            const colors = ['#10b981', '#06b6d4', '#3b82f6', '#f59e0b', '#ec4899'];
+            for (let i = 0; i < 120; i++) {
+                confettiParticles.push({
+                    x: Math.random() * elements.canvas.width,
+                    y: Math.random() * -elements.canvas.height - 20,
+                    size: Math.random() * 8 + 4,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    speedY: Math.random() * 5 + 3,
+                    speedX: Math.random() * 4 - 2,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: Math.random() * 4 - 2
+                });
+            }
+        }
+
+        function updateAndDrawConfetti() {
+            if (GameState.currentScreen !== 'result') return;
+            ctx.save();
+            ctx.translate(elements.canvas.width, 0);
+            ctx.scale(-1, 1); // Respect the mirrored canvas matrix coordinate space
+            confettiParticles.forEach(p => {
+                p.y += p.speedY;
+                p.x += p.speedX;
+                p.rotation += p.rotationSpeed;
+
+                // Reset particle to top if offscreen bottom
+                if (p.y > elements.canvas.height) {
+                    p.y = -20;
+                    p.x = Math.random() * elements.canvas.width;
+                }
+
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rotation * Math.PI / 180);
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        // Handle Screen Switching UI State Changes smoothly
+        function switchScreen(screenKey) {
+            GameState.currentScreen = screenKey;
+            
+            // Hide all screen states
+            Object.keys(screens).forEach(key => {
+                screens[key].classList.add('hidden');
+                screens[key].classList.remove('flex');
+            });
+
+            // Show current targeted screen
+            if (screenKey === 'countdown') {
+                screens[screenKey].classList.remove('hidden');
+                screens[screenKey].classList.add('flex');
+            } else {
+                screens[screenKey].classList.remove('hidden');
+            }
+
+            // Cleanup any screen dependent configurations
+            if (screenKey !== 'play') {
+                clearInterval(GameState.timerInterval);
+                GameState.timerActive = false;
+                clearDwellSelection();
+            }
+
+            if (screenKey === 'result') {
+                createConfetti();
+                AudioEngine.victory();
+                renderResultDashboard();
+            }
+        }
+
+        // Render Results Dashboard Analytics
+        function renderResultDashboard() {
+            const percentage = (GameState.correctCount / 5) * 100;
+            let grade = 'C';
+            let gradeColorClass = 'text-rose-500';
+
+            if (percentage >= 100) {
+                grade = 'S';
+                gradeColorClass = 'text-emerald-400';
+            } else if (percentage >= 80) {
+                grade = 'A';
+                gradeColorClass = 'text-emerald-400';
+            } else if (percentage >= 60) {
+                grade = 'B';
+                gradeColorClass = 'text-cyan-400';
+            }
+
+            elements.resultGrade.textContent = grade;
+            elements.resultGrade.className = `cyber-font font-black text-8xl block neon-glow-emerald ${gradeColorClass}`;
+            elements.resultScore.textContent = GameState.score.toLocaleString();
+            elements.resultAccuracy.textContent = `${GameState.correctCount} / 5 ข้อ`;
+        }
+
+        // Trigger Audio on Option button Hover Interaction
+        function onOptionHoverEnter(btn) {
+            if (GameState.currentScreen !== 'play') return;
+            AudioEngine.tick();
+            btn.classList.add('bg-emerald-500/10', 'border-emerald-500', 'neon-glow-emerald');
+        }
+
+        function onOptionHoverExit(btn) {
+            btn.classList.remove('bg-emerald-500/10', 'border-emerald-500', 'neon-glow-emerald');
+        }
+
+        // Standard Button Input Event Listeners Fallback
+        elements.optionButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (GameState.currentScreen !== 'play') return;
+                const selectedIndex = parseInt(btn.getAttribute('data-index'));
+                evaluateChoice(selectedIndex);
+            });
+            
+            btn.addEventListener('mouseenter', () => onOptionHoverEnter(btn));
+            btn.addEventListener('mouseleave', () => onOptionHoverExit(btn));
+        });
+
+        // Exponential smoothing (Lerp) algorithm
+        function smoothPosition(targetX, targetY) {
+            GameState.smoothedPointerX = (targetX * GameState.alpha) + (GameState.smoothedPointerX * (1 - GameState.alpha));
+            GameState.smoothedPointerY = (targetY * GameState.alpha) + (GameState.smoothedPointerY * (1 - GameState.alpha));
+        }
+
+        // Initialize MediaPipe Engine Setup
+        function initMediaPipe() {
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onHandResults);
+
+            camera = new Camera(elements.webcam, {
+                onFrame: async () => {
+                    await hands.send({ image: elements.webcam });
+                },
+                width: 640,
+                height: 480
+            });
+
+            camera.start()
+                .then(() => {
+                    elements.aiStatusIcon.className = "fa-solid fa-circle-check text-emerald-400";
+                    elements.aiStatusText.textContent = "CAMERA READY";
+                    elements.aiStatusText.className = "text-emerald-400 font-bold";
+                    
+                    // Activate and configure Start Button state
+                    elements.startButton.removeAttribute('disabled');
+                    elements.startButton.innerHTML = `<i class="fa-solid fa-dna mr-2 animate-bounce"></i> START BIOLOGY QUEST`;
+                })
+                .catch(err => {
+                    console.error("Camera access failed:", err);
+                    elements.aiStatusIcon.className = "fa-solid fa-triangle-exclamation text-rose-500";
+                    elements.aiStatusText.textContent = "CAMERA ERROR";
+                    elements.aiStatusText.className = "text-rose-500 font-bold";
+                    
+                    // Allow Fallback play anyway
+                    elements.startButton.removeAttribute('disabled');
+                    elements.startButton.innerHTML = `<i class="fa-solid fa-play mr-2"></i> PLAY (MOUSE FALLBACK)`;
+                });
+        }
+
+        // Trigger Skeletal Render Toggle
+        elements.toggleSkeletonBtn.addEventListener('click', () => {
+            GameState.skeletonVisible = !GameState.skeletonVisible;
+            if (GameState.skeletonVisible) {
+                elements.toggleSkeletonBtn.className = "cyber-glass hover:bg-emerald-500/20 text-emerald-400 font-medium px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all duration-300";
+                elements.toggleSkeletonBtn.querySelector('span').textContent = "SKELETON: ON";
+            } else {
+                elements.toggleSkeletonBtn.className = "cyber-glass hover:bg-rose-500/20 text-rose-400 font-medium px-4 py-2 rounded-xl text-xs flex items-center gap-2 transition-all duration-300";
+                elements.toggleSkeletonBtn.querySelector('span').textContent = "SKELETON: OFF";
+            }
+        });
+
+        // Hand Tracker Result Process
+        function onHandResults(results) {
+            // Monitor Frame Rates
+            const now = performance.now();
+            frameCount++;
+            if (now - lastFrameTime >= 1000) {
+                elements.fpsDisplay.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+
+            // Sync canvas resolution on window resize bounds
+            if (elements.canvas.width !== window.innerWidth || elements.canvas.height !== window.innerHeight) {
+                elements.canvas.width = window.innerWidth;
+                elements.canvas.height = window.innerHeight;
+            }
+
+            // Draw Webcam frames back onto custom interactive Canvas
+            ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+            ctx.save();
+            ctx.drawImage(results.image, 0, 0, elements.canvas.width, elements.canvas.height);
+            ctx.restore();
+
+            GameState.handDetected = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+
+            if (GameState.handDetected) {
+                const landmarks = results.multiHandLandmarks[0];
+
+                // Extract Pointer Index Tip Coordinates (Landmark 8)
+                const indexTip = landmarks[8];
+                
+                // Mirror coordinates back horizontally to match user perspective layout
+                const mirroredX = (1 - indexTip.x) * window.innerWidth;
+                const mirroredY = indexTip.y * window.innerHeight;
+
+                // Apply Lerp stabilizer filter
+                smoothPosition(mirroredX, mirroredY);
+
+                // Draw Tracked joint structures if configuration enabled
+                if (GameState.skeletonVisible) {
+                    drawSkeleton(landmarks);
+                }
+
+                // Render customized tracking pointer cursor to represent hand
+                updateCustomCursor();
+                processDwellDetection();
+            } else {
+                // Dim cursor opacity if active hands drop off-screen
+                elements.dwellCursor.style.opacity = '0';
+                clearDwellSelection();
+            }
+
+            // Continue rendering particles when on results page
+            if (GameState.currentScreen === 'result') {
+                updateAndDrawConfetti();
+            }
+        }
+
+        // Draw Biotech/Cyberpunk Hand Rig Skeleton overlay
+        function drawSkeleton(landmarks) {
+            ctx.save();
+            // Respect mirrored canvas horizontal positioning
+            ctx.translate(elements.canvas.width, 0);
+            ctx.scale(-1, 1);
+
+            // Connective segment lines configuration
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8], // Index
+                [9, 10], [10, 11], [11, 12],     // Middle
+                [13, 14], [14, 15], [15, 16],    // Ring
+                [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+                [5, 9], [9, 13], [13, 17] // Palm Base Line
+            ];
+
+            // Render joint linkages with neon cyber hues
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+            ctx.lineWidth = 4;
+            connections.forEach(([startIdx, endIdx]) => {
+                const start = landmarks[startIdx];
+                const end = landmarks[endIdx];
+                ctx.beginPath();
+                ctx.moveTo(start.x * elements.canvas.width, start.y * elements.canvas.height);
+                ctx.lineTo(end.x * elements.canvas.width, end.y * elements.canvas.height);
+                ctx.stroke();
+            });
+
+            // Draw individual joint nodes
+            landmarks.forEach((pt, idx) => {
+                ctx.beginPath();
+                ctx.arc(pt.x * elements.canvas.width, pt.y * elements.canvas.height, 5, 0, 2 * Math.PI);
+                if (idx === 8) {
+                    // Landmark index tip
+                    ctx.fillStyle = '#06b6d4';
+                    ctx.shadowColor = '#06b6d4';
+                    ctx.shadowBlur = 12;
+                } else {
+                    ctx.fillStyle = '#10b981';
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fill();
+            });
+
+            ctx.restore();
+        }
+
+        // Position Custom Cursor Over Screen Canvas
+        function updateCustomCursor() {
+            elements.dwellCursor.style.opacity = '1';
+            elements.dwellCursor.style.left = `${GameState.smoothedPointerX}px`;
+            elements.dwellCursor.style.top = `${GameState.smoothedPointerY}px`;
+        }
+
+        // Dwell Engine Calculation Logic
+        function processDwellDetection() {
+            if (GameState.currentScreen !== 'play' && GameState.currentScreen !== 'home' && GameState.currentScreen !== 'result') {
+                clearDwellSelection();
+                return;
+            }
+
+            // Probe what elements are located beneath current tracked pointer location
+            const elementUnder = document.elementFromPoint(GameState.smoothedPointerX, GameState.smoothedPointerY);
+            if (!elementUnder) {
+                clearDwellSelection();
+                return;
+            }
+
+            // Look for closest interactive targets
+            const targetBtn = elementUnder.closest('button');
+
+            if (targetBtn && !targetBtn.disabled) {
+                if (GameState.hoveredElement !== targetBtn) {
+                    // Hand pointer enters target bounds
+                    GameState.hoveredElement = targetBtn;
+                    GameState.dwellStartTime = performance.now();
+                    GameState.dwellActive = true;
+                    
+                    // Trigger visual mouseenter effects programmatically
+                    if (targetBtn.classList.contains('quiz-option-btn')) {
+                        onOptionHoverEnter(targetBtn);
+                    } else {
+                        targetBtn.classList.add('scale-[1.03]');
+                    }
+                } else {
+                    // Hold dwell sequence and track progress percentage
+                    const elapsed = performance.now() - GameState.dwellStartTime;
+                    const percent = Math.min(100, (elapsed / GameState.dwellDuration) * 100);
+                    
+                    // Render Dash offset calculations on SVG Progress ring
+                    const circumference = 2 * Math.PI * 16; // r=16
+                    const offset = circumference - (percent / 100) * circumference;
+                    elements.dwellProgressRing.style.strokeDashoffset = offset;
+
+                    // Trigger Select Action upon crossing 100% threshold
+                    if (elapsed >= GameState.dwellDuration) {
+                        clearDwellSelection();
+                        targetBtn.click(); // Dispatch click event directly
+                    }
+                }
+            } else {
+                clearDwellSelection();
+            }
+        }
+
+        // Stop active dwell and restore visual styles
+        function clearDwellSelection() {
+            if (GameState.hoveredElement) {
+                if (GameState.hoveredElement.classList.contains('quiz-option-btn')) {
+                    onOptionHoverExit(GameState.hoveredElement);
+                } else {
+                    GameState.hoveredElement.classList.remove('scale-[1.03]');
+                }
+            }
+            GameState.hoveredElement = null;
+            GameState.dwellStartTime = null;
+            GameState.dwellActive = false;
+            elements.dwellProgressRing.style.strokeDashoffset = "100.53"; // Complete default offset
+        }
+
+        // Start Quiz Game Sequence initialization
+        elements.startButton.addEventListener('click', () => {
+            AudioEngine.init();
+            AudioEngine.tick();
+            
+            // Build random 5 questions pool out of 15
+            initializeSessionQuestions();
+            
+            switchScreen('countdown');
+            runCountdownTimer();
+        });
+
+        elements.restartButton.addEventListener('click', () => {
+            AudioEngine.tick();
+            initializeSessionQuestions();
+            switchScreen('countdown');
+            runCountdownTimer();
+        });
+
+        function initializeSessionQuestions() {
+            GameState.score = 0;
+            GameState.currentQuestionIdx = 0;
+            GameState.correctCount = 0;
+            
+            // Shuffler algorithm
+            const shuffled = [...QUESTION_POOL].sort(() => 0.5 - Math.random());
+            GameState.sessionQuestions = shuffled.slice(0, 5);
+        }
+
+        // Start countdown sequencing
+        function runCountdownTimer() {
+            let count = 3;
+            elements.countdownNumber.textContent = count;
+            AudioEngine.tick();
+
+            const interval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    elements.countdownNumber.textContent = count;
+                    AudioEngine.tick();
+                } else {
+                    clearInterval(interval);
+                    switchScreen('play');
+                    loadQuestionState();
+                }
+            }, 1000);
+        }
+
+        // Load Question content dynamically
+        function loadQuestionState() {
+            const currentQ = GameState.sessionQuestions[GameState.currentQuestionIdx];
+            
+            // Render interface titles
+            elements.questionIndexBadge.textContent = `${GameState.currentQuestionIdx + 1} / 5`;
+            elements.scoreBadge.textContent = String(GameState.score).padStart(4, '0');
+            elements.questionTopicTag.textContent = currentQ.topic;
+            elements.questionText.textContent = currentQ.text;
+
+            // Render option button items
+            elements.optionButtons.forEach((btn, idx) => {
+                btn.removeAttribute('disabled');
+                btn.className = "quiz-option-btn cyber-glass hover:bg-emerald-500/10 active:scale-[0.98] border border-slate-700/80 hover:border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200";
+                
+                // Query standard choice child text node
+                btn.querySelector('.option-text').textContent = currentQ.options[idx];
+            });
+
+            // Start clock countdown state
+            GameState.timer = 10.0;
+            elements.timerTextDigits.textContent = `⏱️ 10.0s`;
+            elements.timerBar.style.width = '100%';
+            elements.timerBar.className = 'absolute left-0 top-0 h-full w-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-100 ease-linear shadow-[0_0_10px_#10b981]';
+            
+            startQuestionTimer();
+        }
+
+        // Play countdown timer management
+        function startQuestionTimer() {
+            clearInterval(GameState.timerInterval);
+            GameState.timerActive = true;
+            const startTime = performance.now();
+
+            GameState.timerInterval = setInterval(() => {
+                const elapsed = (performance.now() - startTime) / 1000;
+                GameState.timer = Math.max(0, 10.0 - elapsed);
+                
+                // Update countdown numerals
+                elements.timerTextDigits.textContent = `⏱️ ${GameState.timer.toFixed(1)}s`;
+                
+                // Update countdown visual progress indicators
+                const percent = (GameState.timer / 10.0) * 100;
+                elements.timerBar.style.width = `${percent}%`;
+
+                // Color shift bar during emergencies (last 3 seconds)
+                if (GameState.timer <= 3.0) {
+                    elements.timerBar.className = 'absolute left-0 top-0 h-full w-full bg-gradient-to-r from-rose-500 to-red-500 transition-all duration-100 ease-linear shadow-[0_0_10px_#f43f5e]';
+                    if (Math.floor(GameState.timer * 2) % 2 === 0) {
+                        AudioEngine.tick(); // Warning tick rhythm
+                    }
+                }
+
+                if (GameState.timer <= 0) {
+                    clearInterval(GameState.timerInterval);
+                    evaluateChoice(-1); // Timeout penalty
+                }
+            }, 50);
+        }
+
+        // Evaluate choices and scores
+        function evaluateChoice(selectedIdx) {
+            clearInterval(GameState.timerInterval);
+            GameState.timerActive = false;
+            clearDwellSelection();
+
+            // Disable buttons temporarily to prevent double submission
+            elements.optionButtons.forEach(btn => btn.setAttribute('disabled', 'true'));
+
+            const currentQ = GameState.sessionQuestions[GameState.currentQuestionIdx];
+            const isCorrect = (selectedIdx === currentQ.correct);
+
+            // Display selection highlights immediately on UI
+            elements.optionButtons.forEach((btn, idx) => {
+                if (idx === currentQ.correct) {
+                    // Emphasize correct answer in green
+                    btn.className = "quiz-option-btn bg-emerald-950/60 border-2 border-emerald-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200 pointer-events-none";
+                    btn.querySelector('.option-text').className = "option-text text-sm md:text-base font-bold text-emerald-300";
+                } else if (idx === selectedIdx && !isCorrect) {
+                    // Highlight incorrect choice in red
+                    btn.className = "quiz-option-btn bg-rose-950/60 border-2 border-rose-500 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200 pointer-events-none";
+                    btn.querySelector('.option-text').className = "option-text text-sm md:text-base font-bold text-rose-300";
+                } else {
+                    btn.className = "quiz-option-btn bg-slate-950/20 opacity-40 border border-slate-800 text-left p-5 rounded-2xl flex items-center space-x-4 transition-all duration-200 pointer-events-none";
+                }
+            });
+
+            // Calculate scoring outcomes
+            let pointsEarned = 0;
+            if (isCorrect) {
+                GameState.correctCount++;
+                pointsEarned = Math.round(100 + (GameState.timer * 10));
+                GameState.score += pointsEarned;
+                AudioEngine.correct();
+                showFeedback(true, pointsEarned);
+            } else {
+                AudioEngine.wrong();
+                showFeedback(false, 0);
+            }
+
+            // Wait 2.5 seconds, then load next question or finish quiz
+            setTimeout(() => {
+                hideFeedback();
+                GameState.currentQuestionIdx++;
+                if (GameState.currentQuestionIdx < 5) {
+                    loadQuestionState();
+                } else {
+                    switchScreen('result');
+                }
+            }, 2500);
+        }
+
+        // Show Full Screen result notifications
+        function showFeedback(isCorrect, score) {
+            elements.feedbackOverlay.classList.remove('opacity-0', 'pointer-events-none');
+            elements.feedbackOverlay.classList.add('opacity-100');
+            elements.feedbackCard.classList.remove('scale-75');
+            elements.feedbackCard.classList.add('scale-100');
+
+            if (isCorrect) {
+                elements.feedbackIconContainer.className = "w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-emerald-500 bg-emerald-950 shadow-[0_0_20px_rgba(16,185,129,0.4)] animate-bounce";
+                elements.feedbackIcon.className = "fa-solid fa-check text-emerald-400 text-4xl";
+                elements.feedbackTitle.textContent = "CORRECT ANSWER";
+                elements.feedbackTitle.className = "text-2xl font-black mb-2 tracking-wide text-emerald-400 cyber-font";
+                elements.feedbackDetail.innerHTML = `สุดยอด! ได้รับคะแนนฐานรวมกับโบนัสเวลา<br><span class="text-cyan-400 font-bold text-lg">+ ${score}</span> คะแนน`;
+            } else {
+                elements.feedbackIconContainer.className = "w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-rose-500 bg-rose-950 shadow-[0_0_20px_rgba(244,63,94,0.4)] animate-shake";
+                elements.feedbackIcon.className = "fa-solid fa-xmark text-rose-400 text-4xl";
+                elements.feedbackTitle.textContent = "WRONG ANSWER";
+                elements.feedbackTitle.className = "text-2xl font-black mb-2 tracking-wide text-rose-500 cyber-font";
+                
+                const currentQ = GameState.sessionQuestions[GameState.currentQuestionIdx];
+                const correctOptionText = currentQ.options[currentQ.correct];
+                elements.feedbackDetail.innerHTML = `คำตอบที่ถูกต้องคือ:<br><span class="text-emerald-400 font-bold">${correctOptionText}</span>`;
+            }
+        }
+
+        function hideFeedback() {
+            elements.feedbackOverlay.classList.add('opacity-0', 'pointer-events-none');
+            elements.feedbackOverlay.classList.remove('opacity-100');
+            elements.feedbackCard.classList.add('scale-75');
+            elements.feedbackCard.classList.remove('scale-100');
+        }
+
+        // App Initial Onload Trigger
+        window.onload = function() {
+            elements.aiStatusText.textContent = "LOADING AI MODEL...";
+            elements.aiStatusText.className = "text-cyan-400 font-semibold animate-pulse";
+            
+            // Delay MediaPipe setup slightly to ensure flawless browser rendering pipeline initialization
+            setTimeout(() => {
+                try {
+                    initMediaPipe();
+                } catch (e) {
+                    console.error("AI Model Initialization Failure: ", e);
+                    elements.aiStatusIcon.className = "fa-solid fa-circle-exclamation text-rose-500";
+                    elements.aiStatusText.textContent = "AI LOAD FAILED";
+                    elements.startButton.removeAttribute('disabled');
+                    elements.startButton.innerHTML = `<i class="fa-solid fa-play mr-2"></i> PLAY (MOUSE FALLBACK)`;
+                }
+            }, 1000);
+        };
+    </script>
+</body>
+</html>
